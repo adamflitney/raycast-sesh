@@ -20,7 +20,9 @@ import {
   createSession,
   switchClient,
   sanitizeSessionName,
+  ensureSessionWindows,
 } from "./lib/tmux";
+import { openTerminalWithCommand, focusTerminal } from "./lib/terminal";
 import { addRecent } from "./lib/cache";
 import { homedir } from "os";
 
@@ -62,9 +64,15 @@ export default function SwitchSession() {
         };
       });
 
-      // Add any active sessions that don't match a discovered project
+      // Add any active sessions that don't match a discovered project.
+      // Skip tmux's auto-named numeric sessions ("0", "1", ...) — those are
+      // throwaway sessions tmux creates when started without -s, and they
+      // tend to clutter the list without representing real work.
       for (const session of sessions) {
-        const alreadyListed = sessionItems.some((item) => item.sessionName === session);
+        if (/^\d+$/.test(session)) continue;
+        const alreadyListed = sessionItems.some(
+          (item) => item.sessionName === session,
+        );
         if (!alreadyListed) {
           sessionItems.unshift({
             name: session,
@@ -99,7 +107,8 @@ export default function SwitchSession() {
         title: `Switching to ${item.name}...`,
       });
 
-      // Create session if it doesn't exist
+      // Create session if it doesn't exist. If it already exists, top up any
+      // missing default windows so older sessions match the 3-window layout.
       if (!item.isActive) {
         if (!item.path) {
           await showToast({
@@ -110,29 +119,27 @@ export default function SwitchSession() {
           return;
         }
         await createSession(item.sessionName, item.path);
+      } else {
+        await ensureSessionWindows(item.sessionName, item.path);
       }
 
-      // Find the most recent tmux client to target
+      // If a tmux client is already attached somewhere, retarget it —
+      // that's the fast path (no new window, no keystrokes).
       const clients = await listClients();
       const client = getMostRecentClient(clients);
 
-      if (!client) {
-        // No tmux client attached — try opening Ghostty
-        try {
-          const { exec } = await import("child_process");
-          exec("open -a Ghostty");
-        } catch {
-          // ignore
-        }
-        await showToast({
-          style: Toast.Style.Failure,
-          title: "No terminal connected to tmux",
-          message: "Opening Ghostty — try again in a moment",
-        });
-        return;
+      if (client) {
+        await switchClient(item.sessionName, client.tty);
+        await focusTerminal();
+      } else {
+        // No tmux client anywhere. The user's shell doesn't auto-attach tmux,
+        // so opening a bare terminal and waiting won't help — we have to
+        // explicitly run `tmux attach`.
+        // sessionName is already sanitized to [a-zA-Z0-9_-], so no quoting.
+        await openTerminalWithCommand(
+          `tmux attach -t ${item.sessionName}`,
+        );
       }
-
-      await switchClient(item.sessionName, client.tty);
 
       // Update frecency tracking
       if (item.path) {
@@ -151,10 +158,7 @@ export default function SwitchSession() {
   }, []);
 
   return (
-    <List
-      isLoading={isLoading}
-      searchBarPlaceholder="Search projects..."
-    >
+    <List isLoading={isLoading} searchBarPlaceholder="Search projects...">
       {items.length === 0 && !isLoading ? (
         <List.EmptyView
           title="No Projects Found"
@@ -176,7 +180,9 @@ export default function SwitchSession() {
             actions={
               <ActionPanel>
                 <Action
-                  title={item.isActive ? "Switch to Session" : "Create and Switch"}
+                  title={
+                    item.isActive ? "Switch to Session" : "Create and Switch"
+                  }
                   icon={Icon.Terminal}
                   onAction={() => handleSelect(item)}
                 />

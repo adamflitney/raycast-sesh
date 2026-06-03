@@ -19,7 +19,9 @@ const SKIP_DIRS = new Set([
   "venv",
 ]);
 
-export async function findGitProjects(directories: string[]): Promise<Project[]> {
+export async function findGitProjects(
+  directories: string[],
+): Promise<Project[]> {
   const projectsMap = new Map<string, Project>();
 
   for (const dir of directories) {
@@ -33,7 +35,10 @@ export async function findGitProjects(directories: string[]): Promise<Project[]>
   return Array.from(projectsMap.values());
 }
 
-async function walkForGitProjects(dir: string, projects: Map<string, Project>): Promise<void> {
+async function walkForGitProjects(
+  dir: string,
+  projects: Map<string, Project>,
+): Promise<void> {
   let entries;
   try {
     entries = await readdir(dir, { withFileTypes: true });

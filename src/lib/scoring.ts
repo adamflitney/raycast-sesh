@@ -29,7 +29,9 @@ async function getZoxideScores(): Promise<Map<string, number>> {
   return scores;
 }
 
-export async function scoreProjects(projects: Project[]): Promise<ScoredProject[]> {
+export async function scoreProjects(
+  projects: Project[],
+): Promise<ScoredProject[]> {
   const [zoxideScores, recent] = await Promise.all([
     getZoxideScores(),
     loadRecent(),
