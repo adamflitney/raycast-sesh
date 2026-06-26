@@ -1,60 +1,60 @@
-import { execCommand, execBinary } from "./exec";
+import { execBinary } from "./exec";
 
 const TERMINAL_APP = "Ghostty";
 
-async function isTerminalRunning(): Promise<boolean> {
+export async function focusTerminal(): Promise<void> {
+  await execBinary("osascript", [
+    "-e",
+    `tell application "${TERMINAL_APP}" to activate`,
+  ]);
+}
+
+/**
+ * Searches all tabs in the front Ghostty window for one whose title starts with
+ * "<sessionName>:" (tmux propagates titles as "session: window"). If found,
+ * selects that tab and brings Ghostty to the front. Returns true on success.
+ */
+export async function focusSessionTab(sessionName: string): Promise<boolean> {
+  const script = `
+    tell application "${TERMINAL_APP}"
+      set w to front window
+      repeat with t in every tab of w
+        if name of t starts with "${sessionName}:" or name of t is "${sessionName}" then
+          select tab t
+          activate window w
+          activate
+          return true
+        end if
+      end repeat
+      return false
+    end tell
+  `;
   try {
-    // pgrep -xi matches the exact (case-insensitive) binary name. Exit 0 means
-    // at least one match.
-    await execCommand(`pgrep -xi ${TERMINAL_APP}`);
-    return true;
+    const result = await execBinary("osascript", ["-e", script]);
+    return result.trim() === "true";
   } catch {
     return false;
   }
 }
 
-export async function focusTerminal(): Promise<void> {
-  await execCommand(
-    `osascript -e 'tell application "${TERMINAL_APP}" to activate'`,
-  );
-}
-
 /**
- * Opens a Ghostty window running the given shell command.
- *
- * Background: on macOS, `open -na Ghostty --args -e <cmd>` is the only way to
- * hand Ghostty a command — but `-n` always spawns a *new* process. To reuse an
- * already-running Ghostty we drive it via AppleScript: activate it, send ⌘N
- * to open a new window, then type the command. This needs Accessibility
- * permission for Raycast (System Settings → Privacy & Security → Accessibility).
+ * Opens a new tab in the front Ghostty window (or launches Ghostty if it isn't
+ * running) and attaches to the given tmux session. Uses the native AppleScript
+ * "new tab" command with a surface configuration so no keystrokes are needed.
  */
-export async function openTerminalWithCommand(command: string): Promise<void> {
-  const running = await isTerminalRunning();
-
-  if (!running) {
-    // No Ghostty yet — launch a fresh instance and pass the command through.
-    // -e consumes the rest of argv as the command to run.
-    await execBinary("open", [
-      "-na",
-      `${TERMINAL_APP}.app`,
-      "--args",
-      "-e",
-      command,
-    ]);
-    return;
-  }
-
-  // Ghostty already running: activate it, open a new window, type the command.
-  // AppleScript string literals need " and \ escaped.
-  const escaped = command.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
+export async function openNewTabForSession(sessionName: string): Promise<void> {
   const script = `
-    tell application "${TERMINAL_APP}" to activate
-    delay 0.15
-    tell application "System Events"
-      keystroke "n" using command down
-      delay 0.25
-      keystroke "${escaped}"
-      key code 36
+    tell application "${TERMINAL_APP}"
+      if (count of windows) is 0 then
+        set cfg to new surface configuration
+        set command of cfg to "tmux attach -t ${sessionName}"
+        new window with configuration cfg
+      else
+        set cfg to new surface configuration
+        set command of cfg to "tmux attach -t ${sessionName}"
+        new tab in front window with configuration cfg
+      end if
+      activate
     end tell
   `;
   await execBinary("osascript", ["-e", script]);

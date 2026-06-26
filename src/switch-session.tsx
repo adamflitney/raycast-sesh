@@ -16,13 +16,11 @@ import { scoreProjects, ScoredProject } from "./lib/scoring";
 import {
   listSessions,
   listClients,
-  getMostRecentClient,
   createSession,
-  switchClient,
   sanitizeSessionName,
   ensureSessionWindows,
 } from "./lib/tmux";
-import { openTerminalWithCommand, focusTerminal } from "./lib/terminal";
+import { focusSessionTab, openNewTabForSession } from "./lib/terminal";
 import { addRecent } from "./lib/cache";
 import { homedir } from "os";
 
@@ -123,22 +121,16 @@ export default function SwitchSession() {
         await ensureSessionWindows(item.sessionName, item.path);
       }
 
-      // If a tmux client is already attached somewhere, retarget it —
-      // that's the fast path (no new window, no keystrokes).
+      // If the session already has a client attached, its tab is open somewhere
+      // in Ghostty — find it by name and bring it forward. Otherwise open a
+      // new tab and attach.
       const clients = await listClients();
-      const client = getMostRecentClient(clients);
+      const hasClient = clients.some((c) => c.session === item.sessionName);
 
-      if (client) {
-        await switchClient(item.sessionName, client.tty);
-        await focusTerminal();
+      if (hasClient) {
+        await focusSessionTab(item.sessionName);
       } else {
-        // No tmux client anywhere. The user's shell doesn't auto-attach tmux,
-        // so opening a bare terminal and waiting won't help — we have to
-        // explicitly run `tmux attach`.
-        // sessionName is already sanitized to [a-zA-Z0-9_-], so no quoting.
-        await openTerminalWithCommand(
-          `tmux attach -t ${item.sessionName}`,
-        );
+        await openNewTabForSession(item.sessionName);
       }
 
       // Update frecency tracking
