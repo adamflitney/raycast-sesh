@@ -15,10 +15,14 @@ declare type Preferences = ExtensionPreferences
 declare namespace Preferences {
   /** Preferences accessible in the `switch-session` command */
   export type SwitchSession = ExtensionPreferences & {}
+  /** Preferences accessible in the `replace-session` command */
+  export type ReplaceSession = ExtensionPreferences & {}
 }
 
 declare namespace Arguments {
   /** Arguments passed to the `switch-session` command */
   export type SwitchSession = {}
+  /** Arguments passed to the `replace-session` command */
+  export type ReplaceSession = {}
 }
 
