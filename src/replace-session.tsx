@@ -16,11 +16,13 @@ import { scoreProjects, ScoredProject } from "./lib/scoring";
 import {
   listSessions,
   listClients,
+  getMostRecentClient,
   createSession,
+  switchClient,
   sanitizeSessionName,
   ensureSessionWindows,
 } from "./lib/tmux";
-import { focusSessionTab, openNewTabForSession } from "./lib/terminal";
+import { focusTerminal } from "./lib/terminal";
 import { addRecent } from "./lib/cache";
 import { homedir } from "os";
 
@@ -37,7 +39,7 @@ function shortenPath(path: string): string {
   return path;
 }
 
-export default function SwitchSession() {
+export default function ReplaceSession() {
   const [items, setItems] = useState<SessionItem[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
@@ -62,10 +64,6 @@ export default function SwitchSession() {
         };
       });
 
-      // Add any active sessions that don't match a discovered project.
-      // Skip tmux's auto-named numeric sessions ("0", "1", ...) — those are
-      // throwaway sessions tmux creates when started without -s, and they
-      // tend to clutter the list without representing real work.
       for (const session of sessions) {
         if (/^\d+$/.test(session)) continue;
         const alreadyListed = sessionItems.some(
@@ -100,13 +98,23 @@ export default function SwitchSession() {
 
   const handleSelect = useCallback(async (item: SessionItem) => {
     try {
+      const clients = await listClients();
+      const client = getMostRecentClient(clients);
+
+      if (!client) {
+        await showToast({
+          style: Toast.Style.Failure,
+          title: "No active tmux session",
+          message: "Open a tmux session in Ghostty first",
+        });
+        return;
+      }
+
       await showToast({
         style: Toast.Style.Animated,
         title: `Switching to ${item.name}...`,
       });
 
-      // Create session if it doesn't exist. If it already exists, top up any
-      // missing default windows so older sessions match the 3-window layout.
       if (!item.isActive) {
         if (!item.path) {
           await showToast({
@@ -121,19 +129,9 @@ export default function SwitchSession() {
         await ensureSessionWindows(item.sessionName, item.path);
       }
 
-      // If the session already has a client attached, its tab is open somewhere
-      // in Ghostty — find it by name and bring it forward. Otherwise open a
-      // new tab and attach.
-      const clients = await listClients();
-      const hasClient = clients.some((c) => c.session === item.sessionName);
+      await switchClient(item.sessionName, client.tty);
+      await focusTerminal();
 
-      if (hasClient) {
-        await focusSessionTab(item.sessionName);
-      } else {
-        await openNewTabForSession(item.sessionName);
-      }
-
-      // Update frecency tracking
       if (item.path) {
         await addRecent(item.name, item.path);
       }
@@ -173,9 +171,9 @@ export default function SwitchSession() {
               <ActionPanel>
                 <Action
                   title={
-                    item.isActive ? "Switch to Session" : "Create and Switch"
+                    item.isActive ? "Replace with Session" : "Create and Replace"
                   }
-                  icon={Icon.Terminal}
+                  icon={Icon.ArrowRight}
                   onAction={() => handleSelect(item)}
                 />
                 {item.path && (

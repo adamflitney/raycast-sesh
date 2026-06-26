@@ -12,7 +12,14 @@
       "name": "switch-session",
       "title": "Switch Session",
       "subtitle": "Sesh",
-      "description": "Switch to or create a tmux session for any project",
+      "description": "Open a project session in a new Ghostty tab, or jump to its existing tab",
+      "mode": "view"
+    },
+    {
+      "name": "replace-session",
+      "title": "Replace Session",
+      "subtitle": "Sesh",
+      "description": "Switch the current Ghostty tab's tmux session to a different project",
       "mode": "view"
     }
   ],
